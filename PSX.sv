@@ -34,7 +34,15 @@ module emu
 
 	//Base video clock. Usually equals to CLK_SYS.
 	output        CLK_VIDEO,
-
+`ifdef MISTER_ENABLE_YC	
+	output 	[39:0]	 CHROMA_PHASE_INC,
+	output 			PALFLAG,
+    output  [26:0]  COLORBURST_RANGE,
+	output 			MULFLAG,
+	output 	[4:0]	CHROMAADD,
+	output	[4:0]	CHROMAMUL,
+	output 			YC_EN, // Enable YC to be build in the core.
+`endif
 	//Multiple resolutions are supported using different CE_PIXEL rates.
 	//Must be based on CLK_VIDEO
 	output        CE_PIXEL,
@@ -355,6 +363,10 @@ parameter CONF_STR = {
 	"-;",
 	"d6C,Cheats;",
 	"h6O[6],Cheats Enabled,Yes,No;",
+	"O[111],Video Signal,RGBS/YPbPr, Y/C;",
+  	//"O[105:101],Chroma Add timing,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31;",
+  	//"O[110:106],Chroma Multiply,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31;",
+	//"O[100],Reverse,No,Yes;",
 	"-;",
 	"hA-,Memcard Status: not saved;",
 	"HB-,Memcard Status: saved;",
@@ -472,6 +484,36 @@ parameter CONF_STR = {
 	"Unsafe option used!;",
 	"V,v",`BUILD_DATE
 };
+/* 	Phase Accumulator Increments (Fractional Size 12, look up size 7 bit, total 19 bits)
+	Increment Calculation - (Output Clock * 2 ^ Word Size) / Reference Clock
+	Example 
+	NTSC = 3.579545 
+	W = 19 ( 12 bit fraction, 7 bit look up reference) 
+	Ref CLK = 85.90908 (This could us any clock) 
+	
+	NTSC_Inc = 3.579545 * 2 ^ 32 / 85.90908 = 178956971
+*/
+`ifdef MISTER_ENABLE_YC
+	parameter NTSC_REF = 3.579545;   
+	parameter PAL_REF = 4.43361875;
+	localparam [6:0] COLORBURST_START = (3.7 * (CLK_VIDEO_NTSC/NTSC_REF));
+	localparam [9:0] COLORBURST_NTSC_END = (9 * (CLK_VIDEO_NTSC/NTSC_REF)) + COLORBURST_START;
+	localparam [9:0] COLORBURST_PAL_END = (10 * (CLK_VIDEO_PAL/PAL_REF)) + COLORBURST_START;
+ 
+	// Modified Variables
+    parameter CLK_VIDEO_NTSC = 55; // Must be filled E.g XX.XXX Hz 
+	parameter CLK_VIDEO_PAL = 55; // Must be filled E.g XX.XXX Hz 
+	localparam [39:0] NTSC_PHASE_INC = 40'd60129542165;  // ((NTSC_REF**2^40) / CLK_VIDEO_NTSC);
+	localparam [39:0] PAL_PHASE_INC = 40'd68719477111; // ((PAL_REF*2^40) / CLK_VIDEO_PAL) ;
+
+	assign CHROMA_PHASE_INC = PALFLAG ? (status[15] ? 40'd91625866829 : 40'd91626311637) : (video_interlace ? 40'd73301061969 : 40'd73301061001);  
+	assign YC_EN = status[111]; // Change the status to match your configuration
+	assign PALFLAG = isPal;  // if applicable, Change the status to match your configuration. 
+	assign MULFLAG = 0;//status[100];
+	assign CHROMAADD = 0;//status[105:101];
+	assign CHROMAMUL = 0;//status[110:106];
+ 	assign COLORBURST_RANGE = {COLORBURST_START, COLORBURST_NTSC_END, COLORBURST_PAL_END};
+`endif
 
 reg dbg_enabled = 0;
 wire  [1:0] buttons;
